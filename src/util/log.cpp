@@ -1,4 +1,10 @@
+/*
+Copyright (c) 2012-2014 The SSDB Authors. All rights reserved.
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+*/
 #include "log.h"
+#include <algorithm>
 
 static Logger logger;
 
@@ -18,6 +24,26 @@ void set_log_level(int level){
 	logger.set_level(level);
 }
 
+void set_log_level(const char *s){
+	std::string ss(s);
+	std::transform(ss.begin(), ss.end(), ss.begin(), ::tolower);
+	int level = Logger::LEVEL_DEBUG;
+	if(ss == "fatal"){
+		level = Logger::LEVEL_FATAL;
+	}else if(ss == "error"){
+		level = Logger::LEVEL_ERROR;
+	}else if(ss == "warn"){
+		level = Logger::LEVEL_WARN;
+	}else if(ss == "info"){
+		level = Logger::LEVEL_INFO;
+	}else if(ss == "debug"){
+		level = Logger::LEVEL_DEBUG;
+	}else if(ss == "trace"){
+		level = Logger::LEVEL_TRACE;
+	}
+	logger.set_level(level);
+}
+
 int log_write(int level, const char *fmt, ...){
 	va_list ap;
 	va_start(ap, fmt);
@@ -28,13 +54,17 @@ int log_write(int level, const char *fmt, ...){
 
 /*****/
 
+Logger* Logger::shared(){
+	return &logger;
+}
+
 Logger::Logger(){
 	fp = stdout;
 	level_ = LEVEL_DEBUG;
 	mutex = NULL;
 
 	filename[0] = '\0';
-	rotate_size = 0;
+	rotate_size_ = 0;
 	stats.w_curr = 0;
 	stats.w_total = 0;
 }
@@ -45,6 +75,32 @@ Logger::~Logger(){
 		free(mutex);
 	}
 	this->close();
+}
+
+std::string Logger::level_name(){
+	switch(level_){
+		case Logger::LEVEL_FATAL:
+			return "fatal";
+		case Logger::LEVEL_ERROR:
+			return "error";
+		case Logger::LEVEL_WARN:
+			return "warn";
+		case Logger::LEVEL_INFO:
+			return "info";
+		case Logger::LEVEL_DEBUG:
+			return "debug";
+		case Logger::LEVEL_TRACE:
+			return "trace";
+	}
+	return "";
+}
+
+std::string Logger::output_name(){
+	return filename;
+}
+
+uint64_t Logger::rotate_size(){
+	return rotate_size_;
 }
 
 void Logger::threadsafe(){
@@ -71,6 +127,8 @@ int Logger::open(const char *filename, int level, bool is_threadsafe, uint64_t r
 		fprintf(stderr, "log filename too long!");
 		return -1;
 	}
+	this->level_ = level;
+	this->rotate_size_ = rotate_size;
 	strcpy(this->filename, filename);
 
 	FILE *fp;
@@ -90,7 +148,6 @@ int Logger::open(const char *filename, int level, bool is_threadsafe, uint64_t r
 			fprintf(stderr, "fstat log file %s error!", filename);
 			return -1;
 		}else{
-			this->rotate_size = rotate_size;
 			stats.w_curr = st.st_size;
 		}
 	}
@@ -148,10 +205,13 @@ int Logger::get_level(const char *levelname){
 	if(strcmp("fatal", levelname) == 0){
 		return LEVEL_FATAL;
 	}
+	if(strcmp("none", levelname) == 0){
+		return LEVEL_NONE;
+	}
 	return LEVEL_DEBUG;
 }
 
-inline static const char* level_name(int level){
+inline static const char* get_level_name(int level){
 	switch(level){
 		case Logger::LEVEL_FATAL:
 			return "[FATAL] ";
@@ -196,7 +256,7 @@ int Logger::logv(int level, const char *fmt, va_list ap){
 	}
 	ptr += len;
 
-	memcpy(ptr, level_name(level), LEVEL_NAME_LEN);
+	memcpy(ptr, get_level_name(level), LEVEL_NAME_LEN);
 	ptr += LEVEL_NAME_LEN;
 
 	int space = sizeof(buf) - (ptr - buf) - 10;
@@ -218,7 +278,7 @@ int Logger::logv(int level, const char *fmt, va_list ap){
 
 	stats.w_curr += len;
 	stats.w_total += len;
-	if(rotate_size > 0 && stats.w_curr > rotate_size){
+	if(rotate_size_ > 0 && stats.w_curr > rotate_size_){
 		this->rotate();
 	}
 	if(this->mutex){

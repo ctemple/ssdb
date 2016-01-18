@@ -1,3 +1,8 @@
+/*
+Copyright (c) 2012-2014 The SSDB Authors. All rights reserved.
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+*/
 #ifndef SSDB_SERVER_H_
 #define SSDB_SERVER_H_
 
@@ -5,106 +10,57 @@
 #include <map>
 #include <vector>
 #include <string>
-#include "util/thread.h"
-#include "ssdb.h"
+#include "ssdb/ssdb_impl.h"
+#include "ssdb/ttl.h"
 #include "backend_dump.h"
 #include "backend_sync.h"
+#include "slave.h"
+#include "net/server.h"
+#include "cluster.h"
 
-#define PROC_OK			0
-#define PROC_ERROR		-1
-#define PROC_BACKEND	100
-
-typedef std::vector<Bytes> Request;
-typedef std::vector<std::string> Response;
-
-
-class Server;
-typedef int (*proc_t)(Server *serv, Link *link, const Request &req, Response *resp);
-
-struct Command{
-	static const int FLAG_READ		= (1 << 0);
-	static const int FLAG_WRITE		= (1 << 1);
-	static const int FLAG_BACKEND	= (1 << 2);
-
-	const char *name;
-	const char *sflags;
-	int flags;
-	proc_t proc;
-	uint64_t calls;
-	double time_wait;
-	double time_proc;
-};
-
-typedef struct _ProcJob{
-	int result;
-	Server *serv;
-	Link *link;
-	Command *cmd;
-	double stime;
-	double time_wait;
-	double time_proc;
+class SSDBServer
+{
+private:
+	void reg_procs(NetworkServer *net);
 	
-	_ProcJob(){
-		result = 0;
-		serv = NULL;
-		link = NULL;
-		cmd = NULL;
-		stime = 0;
-		time_wait = 0;
-		time_proc = 0;
-	}
-}ProcJob; // Request
+	std::string kv_range_s;
+	std::string kv_range_e;
+	
+	SSDB *meta;
 
+public:
+	SSDBImpl *ssdb;
+	BackendDump *backend_dump;
+	BackendSync *backend_sync;
+	ExpirationHandler *expiration;
+	std::vector<Slave *> slaves;
+	Cluster *cluster;
 
-class Server{
-	private:
-		static const int MAX_WRITERS = 2;
-	public:
-		SSDB *ssdb;
-		BackendDump *backend_dump;
-		BackendSync *backend_sync;
+	SSDBServer(SSDB *ssdb, SSDB *meta, const Config &conf, NetworkServer *net);
+	~SSDBServer();
 
-		Server(SSDB *ssdb);
-		~Server();
-		void proc(ProcJob *job);
-
-		// WARN: pipe latency is about 20 us, it is really slow!
-		class WriteProc : public WorkerPool<WriteProc, ProcJob>::Worker{
-		public:
-			~WriteProc(){}
-			void init();
-			void destroy();
-			int proc(ProcJob *job);
-		};
-		WorkerPool<WriteProc, ProcJob> writer;
+	int set_kv_range(const std::string &s, const std::string &e);
+	int get_kv_range(std::string *s, std::string *e);
+	bool in_kv_range(const std::string &key);
+	bool in_kv_range(const Bytes &key);
 };
 
-template<class T>
-static std::string serialize_req(T &req){
-	std::string ret;
-	char buf[50];
-	for(int i=0; i<req.size(); i++){
-		if(i >= 5 && i < req.size() - 1){
-			sprintf(buf, "[%d more...]", (int)req.size() - i);
-			ret.append(buf);
-			break;
-		}
-		if(((req[0] == "get" || req[0] == "set") && i == 1) || req[i].size() < 30){
-			if(req[i].size() == 0){
-				ret.append("\"\"");
-			}else{
-				std::string h = hexmem(req[i].data(), req[i].size());
-				ret.append(h);
-			}
-		}else{
-			sprintf(buf, "[%d]", (int)req[i].size());
-			ret.append(buf);
-		}
-		if(i < req.size() - 1){
-			ret.append(" ");
-		}
-	}
-	return ret;
-}
+
+#define CHECK_KV_KEY_RANGE(n) do{ \
+		if(!link->ignore_key_range && req.size() > n){ \
+			if(!serv->in_kv_range(req[n])){ \
+				resp->push_back("out_of_range"); \
+				return 0; \
+			} \
+		} \
+	}while(0)
+
+#define CHECK_NUM_PARAMS(n) do{ \
+		if(req.size() < n){ \
+			resp->push_back("client_error"); \
+			resp->push_back("wrong number of arguments"); \
+			return 0; \
+		} \
+	}while(0)
 
 #endif

@@ -1,22 +1,29 @@
 include ../../build_config.mk
 
-OBJS = log.o fde.o config.o bytes.o
+OBJS = log.o config.o bytes.o sorted_set.o app.o
 EXES = 
 
 all: ${OBJS}
+	ar -cru ./libutil.a ${OBJS}
+
+app.o: app.h app.cpp
+	${CXX} ${CFLAGS} -c app.cpp
 
 log.o: log.h log.cpp
-	g++ ${CFLAGS} -c log.cpp
+	${CXX} ${CFLAGS} -c log.cpp
 
 config.o: config.h config.cpp
-	g++ ${CFLAGS} -c config.cpp
-
-fde.o: fde.h fde.cpp fde_select.cpp fde_epoll.cpp
-	g++ ${CFLAGS} -c fde.cpp
+	${CXX} ${CFLAGS} -c config.cpp
 
 bytes.o: bytes.h bytes.cpp
-	g++ ${CFLAGS} -c bytes.cpp
+	${CXX} ${CFLAGS} -c bytes.cpp
+
+sorted_set.o: sorted_set.h sorted_set.cpp
+	${CXX} ${CFLAGS} -c sorted_set.cpp
+
+test:
+	$(CXX) ${CFLAGS} test_sorted_set.cpp $(OBJS)
 
 clean:
-	rm -f ${EXES} ${OBJS}
+	rm -f ${EXES} ${OBJS} *.o *.exe *.a
 

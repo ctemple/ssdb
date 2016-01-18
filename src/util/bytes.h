@@ -1,8 +1,11 @@
+/*
+Copyright (c) 2012-2014 The SSDB Authors. All rights reserved.
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+*/
 #ifndef UTIL_BYTES_H_
 #define UTIL_BYTES_H_
 
-#include "../include.h"
-#include "leveldb/slice.h"
 #include "strings.h"
 
 // readonly
@@ -17,6 +20,11 @@ class Bytes{
 			size_ = 0;
 		}
 
+		Bytes(void *data, int size){
+			data_ = (char *)data;
+			size_ = size;
+		}
+
 		Bytes(const char *data, int size){
 			data_ = data;
 			size_ = size;
@@ -24,17 +32,12 @@ class Bytes{
 
 		Bytes(const std::string &str){
 			data_ = str.data();
-			size_ = str.size();
-		}
-
-		Bytes(const leveldb::Slice &slice){
-			data_ = slice.data();
-			size_ = slice.size();
+			size_ = (int)str.size();
 		}
 
 		Bytes(const char *str){
 			data_ = str;
-			size_ = strlen(str);
+			size_ = (int)strlen(str);
 		}
 
 		const char* data() const{
@@ -57,10 +60,6 @@ class Bytes{
 				else if (size_ > b.size_) r = +1;
 			}
 			return r;
-		}
-
-		leveldb::Slice Slice() const{
-			return leveldb::Slice(data_, size_);
 		}
 
 		std::string String() const{
@@ -150,7 +149,7 @@ class Buffer{
 		}
 
 		int space() const{
-			return total_ - (data_ - buf) - size_;
+			return total_ - (int)(data_ - buf) - size_;
 		}
 
 		void incr(int num){
@@ -198,7 +197,7 @@ public:
 		return n;
 	}
 	int read_int64(int64_t *ret){
-		if(size < sizeof(int64_t)){
+		if(size_t(size) < sizeof(int64_t)){
 			return -1;
 		}
 		if(ret){
@@ -207,6 +206,17 @@ public:
 		p += sizeof(int64_t);
 		size -= sizeof(int64_t);
 		return sizeof(int64_t);
+	}
+	int read_uint64(uint64_t *ret){
+		if(size_t(size) < sizeof(uint64_t)){
+			return -1;
+		}
+		if(ret){
+			*ret = *(uint64_t *)p;
+		}
+		p += sizeof(uint64_t);
+		size -= sizeof(uint64_t);
+		return sizeof(uint64_t);
 	}
 	int read_data(std::string *ret){
 		int n = size;
