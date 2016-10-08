@@ -57,7 +57,7 @@ SSDB* SSDB::open(const Options &opt, const std::string &dir){
 		log_error("open db failed: %s", status.ToString().c_str());
 		goto err;
 	}
-	ssdb->binlogs = new BinlogQueue(ssdb->ldb, opt.binlog);
+	ssdb->binlogs = new BinlogQueue(ssdb->ldb, opt.binlog, opt.binlog_capacity);
 
 	return ssdb;
 err:
@@ -277,7 +277,7 @@ int SSDBImpl::key_range(std::vector<std::string> *keys){
 		Bytes ks = it->key();
 		if(ks.data()[0] == DataType::ZSIZE){
 			std::string n;
-			if(decode_hsize_key(ks, &n) == -1){
+			if(decode_zsize_key(ks, &n) == -1){
 				ret = -1;
 			}else{
 				zstart = n;
@@ -291,7 +291,7 @@ int SSDBImpl::key_range(std::vector<std::string> *keys){
 		Bytes ks = it->key();
 		if(ks.data()[0] == DataType::ZSIZE){
 			std::string n;
-			if(decode_hsize_key(ks, &n) == -1){
+			if(decode_zsize_key(ks, &n) == -1){
 				ret = -1;
 			}else{
 				zend = n;
